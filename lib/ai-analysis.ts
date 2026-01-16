@@ -1,4 +1,3 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -15,10 +14,7 @@ import {
   DEFAULTS,
   INDICATOR_DEFAULTS,
 } from "./constants";
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
+import { getAIModel, getProviderInfo } from "./ai-provider";
 
 const TradeSignalSchema = z.object({
   hasValidSetup: z
@@ -229,8 +225,13 @@ export async function analyzeMarket(
   // Format the market data
   const formattedData = formatMarketDataForPrompt(marketData);
 
-  // Create the AI model
-  const model = openrouter("google/gemini-2.0-flash-001");
+  // Get AI model from provider (Gemini direct API by default, OpenRouter as fallback)
+  // Configure via AI_PROVIDER env: "gemini" (free) or "openrouter" (paid fallback)
+  const model = getAIModel();
+  const providerInfo = getProviderInfo();
+  console.log(
+    `[AI Analysis] Using ${providerInfo.provider} provider (${providerInfo.model}) - Free tier: ${providerInfo.isFree}`
+  );
 
   // Generate the analysis
   const { object: signal } = await generateObject({
