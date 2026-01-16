@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String            @id @default(uuid())
+  name             String?
+  email            String            @unique
+  emailVerified    Boolean           @default(false)
+  image            String?
+  isTrader         Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         Session[]
+  accounts         Account[]
+  settings         UserSettings?
+  watchlist        Watchlist[]
+  tradeSignals     TradeSignal[]
+  strategyContents StrategyContent[]
+  userStrategies   UserStrategy[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model UserSettings {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  accountSize     Float    @default(10000)
+  riskPerTrade    Float    @default(1)
+  defaultStrategy String   @default("ai_decide")
+  emailAlerts     Boolean  @default(true)
+  onboardingDone  Boolean  @default(false)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Watchlist {
+  id      String   @id @default(uuid())
+  userId  String
+  symbol  String
+  market  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedAt DateTime @default(now())
+
+  @@unique([userId, symbol])
+}
+
+model TradeSignal {
+  id             String        @id @default(uuid())
+  userId         String
+  symbol         String
+  market         String
+  direction      String
+  entryPrice     Float
+  stopLoss       Float
+  takeProfit     Float
+  riskReward     Float
+  positionSize   Float
+  confidence     Int
+  reasoning      String        @db.Text
+  strategy       String
+  status         String        @default("new")
+  validUntil     DateTime?
+  interval       String        @default("1h")
+  strategyId     String?
+  ragContext     String?       @db.Text
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customStrategy UserStrategy? @relation(fields: [strategyId], references: [id])
+  createdAt      DateTime      @default(now())
+
+  @@index([strategyId])
+}
+
+// User's pasted strategy content (trading rules, methodologies, notes)
+model StrategyContent {
+  id          String                @id @default(uuid())
+  userId      String
+  name        String
+  content     String                @db.Text
+  description String?
+  status      String                @default("pending") // pending, processing, ready, error
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks      ContentChunk[]
+  strategies  StrategyContentLink[]
+
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([userId])
+}
+
+// Vector chunks from pasted content (embedding added via raw SQL)
+model ContentChunk {
+  id         String          @id @default(uuid())
+  contentId  String
+  text       String          @db.Text
+  chunkIndex Int
+
+  content    StrategyContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
+}
+
+// Custom strategy definitions
+model UserStrategy {
+  id           String                @id @default(uuid())
+  userId       String
+  name         String
+  description  String?
+  isActive     Boolean               @default(true)
+  baseStrategy String?               // "ict_smc", "technical", etc. to extend
+  customPrompt String?               @db.Text
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contents     StrategyContentLink[]
+  signals      TradeSignal[]
+
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// Links strategies to content pieces
+model StrategyContentLink {
+  id         String          @id @default(uuid())
+  strategyId String
+  contentId  String
+
+  strategy   UserStrategy    @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  content    StrategyContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([strategyId, contentId])
+}
